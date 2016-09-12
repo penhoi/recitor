@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <stdbool.h>
 #include <getopt.h>
+#include <limits.h>
 #include <assert.h>
 
 
@@ -225,6 +226,9 @@ bool iter_word_set(word_t *ws,  char *pcomb)
 
 
 bool VERBOSE = false;
+bool AUTOSELECT = false;
+#define AUTOSELECT_MAX_IDX 10
+dict_t RES[AUTOSELECT_MAX_IDX];
 void produce_combine_word(word_t *ws, int combine_len)
 {
 	assert(combine_len >= 2);
@@ -274,17 +278,23 @@ void produce_combine_word(word_t *ws, int combine_len)
 
 	char *comb = (char*)malloc(64);
 	char *idxstep = NULL;
+	int idx = 0;
 	bool bexit = false;
 
-	if (VERBOSE) 
+	if (VERBOSE) {
 		idxstep = (char*)malloc(256);
+	}
+	if (!AUTOSELECT)
+		printf("Results of word length %d:\n", combine_len);
 
 	do {
 		if (VERBOSE) {
 			word_t *w = ws;
 			char *p = idxstep;
+			idx  = 0;
 			while (w != NULL) {
 				p += sprintf(p, "%d %d\t", w->idx, w->step);
+				idx += w->idx;
 				w = w->next;
 			}
 		}
@@ -299,23 +309,37 @@ void produce_combine_word(word_t *ws, int combine_len)
 		int pos;
 		for (pos = 0; pos < DICT[i][j].pos; pos++) {
 			if (!strncasecmp(comb, DICT[i][j].ws[pos], 64)) {
-				printf("%s\n", comb);
-				if (VERBOSE)
-					printf("%s\n", idxstep);
+				if (AUTOSELECT) {
+					if (idx < AUTOSELECT_MAX_IDX) {
+						int pos = RES[idx].pos;
+						RES[idx].ws[pos] = strdup(comb);
+						RES[idx].ws[pos+1] = strdup(idxstep);
+						RES[idx].pos += 2;
+						if (RES[idx].pos+2 > RES[idx].alloc) {
+							char **buf = RES[idx].ws;
+							RES[idx].alloc *= 2;
+							buf = (char**)realloc(buf, RES[idx].alloc * sizeof(char*));
+							RES[idx].ws = buf;
+						}
+					}
+				}
+				else if (VERBOSE)
+					printf("%s\n%s\n", comb, idxstep);
+				else
+					printf("%s", comb);
 
 				break;
 			}
 			//printf("%s\n", comb);
 		}
 	}while (!bexit);
-
 }
 
 
 void Usage(const char *prog)
 {
 	printf("Extract characters from word to combine a new word for recite. Usage: \n" 
-			"\t%s [--min decimal] [--max decimal] [--dict fdict] string_list\n", prog);
+			"\t%s [--min decimal] [--max decimal] [--dict fdict] [--verbose | --autoselect[=topn]] string_list\n", prog);
 
 	exit(EXIT_FAILURE);
 }
@@ -325,16 +349,18 @@ int main(int argc, char* argv[])
 	char *words = NULL;
 	char *fdict = NULL;
 	int min = 0, max=0;
+	int topn = INT_MAX;
 
 	static struct option options[] = {
 		{"min", required_argument, NULL, 'i'},
 		{"max", required_argument, NULL, 'a'},
 		{"dict", required_argument, NULL, 'd'},
 		{"verbose", no_argument, NULL, 'v'},
+		{"autoselect", optional_argument, NULL, 's'},
 	};
 
 	int opt, optidx = 0;
-	while ((opt = getopt_long(argc, argv, "v", options, &optidx)) != -1) {
+	while ((opt = getopt_long(argc, argv, "vs::", options, &optidx)) != -1) {
 		switch(opt) {
 			case 'i':
 				min = strtol(optarg, NULL, 10);
@@ -347,6 +373,11 @@ int main(int argc, char* argv[])
 				break;
 			case 'v':
 				VERBOSE = true;
+				break;
+			case 's':
+				AUTOSELECT = true;
+				if (optarg != NULL)
+					topn = strtol(optarg, NULL, 10);
 				break;
 			default:
 				Usage(argv[0]);
@@ -389,11 +420,35 @@ int main(int argc, char* argv[])
 		max = nlen;
 	if (min > max)
 		min = max;
+	if (AUTOSELECT)
+		VERBOSE = true;
 
 	int i;
+	if (AUTOSELECT) {
+		for (i = 0; i< AUTOSELECT_MAX_IDX; i++) {
+			RES[i].alloc = 64;
+			RES[i].pos = 0;
+			RES[i].ws = (char**)malloc(RES[i].alloc * sizeof(char*));
+		}
+	}
+
 	for (i = min; i <= max; i++) { 
-		printf("Results of word length %d:\n", i);
 		produce_combine_word(ws, i);
+	}
+
+	if (AUTOSELECT) {
+		int top = 0;
+		for (i = 0; i< AUTOSELECT_MAX_IDX; i++) {
+			char **data = RES[i].ws;
+			int j;
+			printf("words of sum idx: %d\n", i);
+			for (j = 0; j < RES[i].pos; j+=2, data +=2, top++)
+				printf("%s\n%s\n", data[0], data[1]);
+
+			//We get enough words
+			if (top > topn)
+				break;
+		}
 	}
 
 	return EXIT_SUCCESS;
