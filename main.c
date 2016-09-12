@@ -15,6 +15,7 @@
 typedef struct word_t{
 	char *word;
 	int len, step, idx;
+	// used for outputing combination details
 	struct word_t *next, *prev;
 }word_t;
 
@@ -131,6 +132,7 @@ bool read_dict(char *fdict)
 	return true;
 }
 
+/* return true if overflow; or else return false. */
 bool iter_word_set(word_t *ws,  char *pcomb)
 {
 	//append characters;
@@ -167,18 +169,18 @@ bool iter_word_set(word_t *ws,  char *pcomb)
 	bool bstat = true;
 	word_t *n;
 
+	n = w;
+	while (n != NULL) {
+		n->idx = 0;
+		n = n->next;
+	}
+
 	n = w->next;
 	while (n != NULL) {
 		if (n->step < n->len) {
 			bstat = false;
 			break;
 		}
-		n = n->next;
-	}
-
-	n = w;
-	while (n != NULL) {
-		n->idx = 0;
 		n = n->next;
 	}
 
@@ -206,6 +208,7 @@ bool iter_word_set(word_t *ws,  char *pcomb)
 		return true;
 	}
 
+	// w->step > 1 && !bstat
 	// take one step from current word
 	w->step --;
 	n = w->next;
@@ -221,6 +224,7 @@ bool iter_word_set(word_t *ws,  char *pcomb)
 }
 
 
+bool VERBOSE = false;
 void produce_combine_word(word_t *ws, int combine_len)
 {
 	assert(combine_len >= 2);
@@ -236,7 +240,6 @@ void produce_combine_word(word_t *ws, int combine_len)
 	if (nword > combine_len)
 		return;
 
-	// reallocate steps
 	int len = 0;
 	n = ws;
 	while (n != NULL) {
@@ -246,11 +249,13 @@ void produce_combine_word(word_t *ws, int combine_len)
 	if (combine_len > len)
 		return;
 
+	// reallocate steps
 	int sup = combine_len;
 	n = ws;	
 	while (n != NULL) {
 		n->step = 1;
 		sup--;
+		n->idx = 0;
 		n = n->next;
 	}
 
@@ -268,9 +273,23 @@ void produce_combine_word(word_t *ws, int combine_len)
 	}
 
 	char *comb = (char*)malloc(64);
+	char *idxstep = NULL;
 	bool bexit = false;
 
+	if (VERBOSE) 
+		idxstep = (char*)malloc(256);
+
 	do {
+		if (VERBOSE) {
+			word_t *w = ws;
+			char *p = idxstep;
+			while (w != NULL) {
+				p += sprintf(p, "%d %d\t", w->idx, w->step);
+				w = w->next;
+			}
+		}
+
+		*comb = '\0';
 		bexit = iter_word_set(ws, comb);
 
 		int i, j;
@@ -281,11 +300,13 @@ void produce_combine_word(word_t *ws, int combine_len)
 		for (pos = 0; pos < DICT[i][j].pos; pos++) {
 			if (!strncasecmp(comb, DICT[i][j].ws[pos], 64)) {
 				printf("%s\n", comb);
+				if (VERBOSE)
+					printf("%s\n", idxstep);
+
 				break;
 			}
+			//printf("%s\n", comb);
 		}
-		//printf("%s\n", comb);
-		*comb = '\0';
 	}while (!bexit);
 
 }
@@ -309,10 +330,11 @@ int main(int argc, char* argv[])
 		{"min", required_argument, NULL, 'i'},
 		{"max", required_argument, NULL, 'a'},
 		{"dict", required_argument, NULL, 'd'},
+		{"verbose", no_argument, NULL, 'v'},
 	};
 
 	int opt, optidx = 0;
-	while ((opt = getopt_long(argc, argv, "", options, &optidx)) != -1) {
+	while ((opt = getopt_long(argc, argv, "v", options, &optidx)) != -1) {
 		switch(opt) {
 			case 'i':
 				min = strtol(optarg, NULL, 10);
@@ -322,6 +344,9 @@ int main(int argc, char* argv[])
 				break;
 			case 'd':
 				fdict = strdup(optarg);
+				break;
+			case 'v':
+				VERBOSE = true;
 				break;
 			default:
 				Usage(argv[0]);

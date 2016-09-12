@@ -1,2 +1,2 @@
 all:
-	gcc -o recitor main.c
+	gcc -g -o recitor main.c
