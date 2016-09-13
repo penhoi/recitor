@@ -16,7 +16,8 @@
 typedef struct word_t{
 	char *word;
 	int len, step, idx;
-	// used for outputing combination details
+	// used for words permutation.
+	int nth;
 	struct word_t *next, *prev;
 }word_t;
 
@@ -45,6 +46,7 @@ word_t* word_set_init(const char *words)
 	word_t *wset = (word_t*)calloc(npos, sizeof(word_t));
 	int i;
 	for (i = 0; i < npos; i++) {
+		wset[i].nth = i;
 		wset[i].next = &wset[i+1];
 		wset[i].prev = &wset[i-1];
 	}
@@ -114,19 +116,25 @@ bool read_dict(char *fdict)
 
 		i = tolower(line[0]) - 'a';
 		j = tolower(line[1]) - 'a';
-		DICT[i][j].ws[DICT[i][j].pos] = strndup(line, len);
-		DICT[i][j].pos++;
-		if (DICT[i][j].pos > DICT[i][j].alloc) {
-			char **buf = DICT[i][j].ws;
-			DICT[i][j].alloc *= 2;
-			buf = (char**)realloc(buf, DICT[i][j].alloc * sizeof(char*));
+		dict_t *d = &DICT[i][j];
+		if ((d->alloc == 0) || (d->pos+1 > d->alloc)) {
+			if (d->alloc == 0) {
+				d->alloc == 16;
+				d->ws == NULL;
+			}
+			char **buf = d->ws;
+			d->alloc *= 2;
+			buf = (char**)realloc(buf, d->alloc * sizeof(char*));
 			if (buf == NULL) {
 				perror("No memory");
 				exit(0);
 			}	
-			DICT[i][j].ws = buf;
+			d->ws = buf;
 		}
-	}
+
+		d->ws[d->pos] = strndup(line, len);
+		d->pos++;
+	}//end while
 
 	fclose (f);
 
@@ -134,7 +142,7 @@ bool read_dict(char *fdict)
 }
 
 /* return true if overflow; or else return false. */
-bool iter_word_set(word_t *ws,  char *pcomb)
+bool iter_characters_combination(word_t *ws,  char *pcomb)
 {
 	//append characters;
 	word_t *w = ws;
@@ -155,7 +163,7 @@ bool iter_word_set(word_t *ws,  char *pcomb)
 	}
 
 	//more than one words
-	bool bovflnxt = iter_word_set(ws->next, pcomb);
+	bool bovflnxt = iter_characters_combination(ws->next, pcomb);
 
 	if (!bovflnxt)
 		return false;
@@ -224,12 +232,140 @@ bool iter_word_set(word_t *ws,  char *pcomb)
 	return false;
 }
 
+word_t* words_in_order(word_t *head)
+{
+	if ((head == NULL) || (head->next == NULL))
+		return head;
+
+	word_t *orghead = head;
+	word_t *newhead = NULL;
+	word_t *newtail = NULL;
+
+	while (orghead != NULL) {
+		word_t *w = orghead;
+		int min = w->nth;
+		word_t *n = orghead->next;
+		while (n != NULL) {
+			if (n->nth < min) {
+				w = n;
+				min = n->nth;
+			}
+			n = n->next;
+		}
+		// delete n from the original list;
+		if (w == orghead) {
+			orghead = orghead->next;
+		}
+		else if (w->next == NULL) {
+			w->prev->next = NULL;
+		}
+		else {
+			n = w->next;
+			w->prev->next = n;
+			n->prev = w->prev;
+		}
+		w->next = w->prev = NULL;
+
+		// Add n to the new list;
+		if (newhead == NULL) {
+			newtail = newhead = w;
+		}
+		else {
+			newtail->next = w;
+			w->prev = newtail;
+			newtail = w;
+		}
+	}
+	return newhead;
+}
+
+/* return true for continue; or else return false. */
+bool iter_words_perm(word_t * const proot, int order)
+{
+	if (proot == NULL)
+		return false;
+
+	word_t *n = proot;
+	int nwords;
+
+	nwords = 0;
+	while (n != NULL) {
+		n = n->next;
+		nwords++;
+	}
+
+	if (nwords != order) {
+		perror("Unexpected order");
+		exit(EXIT_FAILURE);
+	}
+
+	//end recusive call
+	if (order == 1)
+		return false;
+
+	bool breverse = true;
+	int min, i;
+
+	min = proot->nth;
+	n  = proot->next;
+	while (n != NULL) {
+		if (n->nth < min) {
+			min = n->nth;
+			n = n->next;
+		}
+		else {
+			breverse = false;
+			break;
+		}
+	}
+	if (breverse)
+		return false;
+
+	bool b = iter_words_perm(proot->next, order-1);
+	if (!b) {
+		if (order <= 2) 
+			n = proot->next;
+		else {
+			word_t *h = words_in_order(proot->next);
+			proot->next = h;
+			h->prev = proot;
+
+			n = h;
+			while (n->next != NULL) {
+				if (n->nth > proot->nth)
+					break;
+				n = n->next;
+			}
+		}
+
+		//swap the conext of n and proot;
+		word_t t, *prev, *next;
+		memcpy(&t, n, sizeof(word_t));
+		memcpy(n, proot, sizeof(word_t));
+		memcpy(proot, &t, sizeof(word_t));
+
+		prev = proot->prev, next = proot->next;
+		proot->prev = n->prev, proot->next = n->next;
+		n->prev = prev, n->next=next;
+
+	}
+	return true;
+}
 
 bool VERBOSE = false;
 bool AUTOSELECT = false;
-#define AUTOSELECT_MAX_IDX 10
-dict_t RES[AUTOSELECT_MAX_IDX];
-void produce_combine_word(word_t *ws, int combine_len)
+bool PERMUTATION = false;
+#define MAX_SUM_IDX 10
+int AUTOSELECT_MAX_IDX = MAX_SUM_IDX;
+
+typedef struct autores_t {
+	char *line;
+	dict_t res[MAX_SUM_IDX];
+}autores_t;
+
+autores_t *AUTORES;
+
+void produce_combine_word(word_t *ws, int combine_len, dict_t res[MAX_SUM_IDX])
 {
 	assert(combine_len >= 2);
 
@@ -277,13 +413,10 @@ void produce_combine_word(word_t *ws, int combine_len)
 	}
 
 	char *comb = (char*)malloc(64);
-	char *idxstep = NULL;
+	char *idxstep = (char*)malloc(256);
 	int idx = 0;
 	bool bexit = false;
 
-	if (VERBOSE) {
-		idxstep = (char*)malloc(256);
-	}
 	if (!AUTOSELECT)
 		printf("Results of word length %d:\n", combine_len);
 
@@ -300,7 +433,7 @@ void produce_combine_word(word_t *ws, int combine_len)
 		}
 
 		*comb = '\0';
-		bexit = iter_word_set(ws, comb);
+		bexit = iter_characters_combination(ws, comb);
 
 		int i, j;
 		i = tolower(comb[0]) - 'a';
@@ -310,36 +443,47 @@ void produce_combine_word(word_t *ws, int combine_len)
 		for (pos = 0; pos < DICT[i][j].pos; pos++) {
 			if (!strncasecmp(comb, DICT[i][j].ws[pos], 64)) {
 				if (AUTOSELECT) {
-					if (idx < AUTOSELECT_MAX_IDX) {
-						int pos = RES[idx].pos;
-						RES[idx].ws[pos] = strdup(comb);
-						RES[idx].ws[pos+1] = strdup(idxstep);
-						RES[idx].pos += 2;
-						if (RES[idx].pos+2 > RES[idx].alloc) {
-							char **buf = RES[idx].ws;
-							RES[idx].alloc *= 2;
-							buf = (char**)realloc(buf, RES[idx].alloc * sizeof(char*));
-							RES[idx].ws = buf;
+					if ((res[idx].alloc == 0) || (res[idx].pos+2 > res[idx].alloc))	{
+						if (res[idx].alloc == 0) {
+							res[idx].alloc = 16;
+							res[idx].ws = NULL;
 						}
+						char **buf = res[idx].ws;
+						res[idx].alloc *= 2;
+						buf = (char**)realloc(buf, res[idx].alloc * sizeof(char*));
+						res[idx].ws = buf;
+					}
+
+					if (idx < AUTOSELECT_MAX_IDX) {
+						int pos = res[idx].pos;
+						res[idx].ws[pos] = strdup(comb);
+						res[idx].ws[pos+1] = strdup(idxstep);
+						res[idx].pos += 2;
 					}
 				}
 				else if (VERBOSE)
 					printf("%s\n%s\n", comb, idxstep);
 				else
-					printf("%s", comb);
+					printf("%s\n", comb);
 
 				break;
 			}
 			//printf("%s\n", comb);
-		}
+		} //end for
 	}while (!bexit);
+
+	free(idxstep);
 }
 
 
 void Usage(const char *prog)
 {
 	printf("Extract characters from word to combine a new word for recite. Usage: \n" 
-			"\t%s [--min decimal] [--max decimal] [--dict fdict] [--verbose | --autoselect[=topn]] string_list\n", prog);
+			"%s [--min decimal] [--max decimal]\n"
+			"\t [--dict fdict]\n"
+			"\t [--verbose | --autoselect[=topn]]\n"
+			"\t [--permutation decimal]\n"
+			"\t string_list\n", prog);
 
 	exit(EXIT_FAILURE);
 }
@@ -355,12 +499,13 @@ int main(int argc, char* argv[])
 		{"min", required_argument, NULL, 'i'},
 		{"max", required_argument, NULL, 'a'},
 		{"dict", required_argument, NULL, 'd'},
-		{"verbose", no_argument, NULL, 'v'},
 		{"autoselect", optional_argument, NULL, 's'},
+		{"permutation", required_argument, NULL, 'p'},
+		{"verbose", no_argument, NULL, 'v'},
 	};
 
 	int opt, optidx = 0;
-	while ((opt = getopt_long(argc, argv, "vs::", options, &optidx)) != -1) {
+	while ((opt = getopt_long(argc, argv, "vs::p:", options, &optidx)) != -1) {
 		switch(opt) {
 			case 'i':
 				min = strtol(optarg, NULL, 10);
@@ -371,13 +516,18 @@ int main(int argc, char* argv[])
 			case 'd':
 				fdict = strdup(optarg);
 				break;
-			case 'v':
-				VERBOSE = true;
-				break;
 			case 's':
 				AUTOSELECT = true;
 				if (optarg != NULL)
 					topn = strtol(optarg, NULL, 10);
+				break;
+			case 'p':
+				PERMUTATION = true;
+				if (optarg != NULL)
+					AUTOSELECT_MAX_IDX = strtol(optarg, NULL, 10);
+				break;
+			case 'v':
+				VERBOSE = true;
 				break;
 			default:
 				Usage(argv[0]);
@@ -420,34 +570,78 @@ int main(int argc, char* argv[])
 		max = nlen;
 	if (min > max)
 		min = max;
+
+	if (PERMUTATION) {
+		AUTOSELECT = true;
+		if (min > nword)
+			min = nword;
+		if ((max > nword) && (nword < nlen))
+			max = nword+1;
+	}
+
 	if (AUTOSELECT)
 		VERBOSE = true;
 
-	int i;
+	int fact = 1;
+	int i, j;
+	//sotre the results with dynamically allocated arrays.
 	if (AUTOSELECT) {
-		for (i = 0; i< AUTOSELECT_MAX_IDX; i++) {
-			RES[i].alloc = 64;
-			RES[i].pos = 0;
-			RES[i].ws = (char**)malloc(RES[i].alloc * sizeof(char*));
+		if (PERMUTATION) {
+			i = nword;
+			while (i > 1) {
+				fact *= i;
+				i--;
+			}
 		}
+		AUTORES = (autores_t*)calloc(fact, sizeof(autores_t));
 	}
 
-	for (i = min; i <= max; i++) { 
-		produce_combine_word(ws, i);
-	}
+	char *line = (char*)malloc(512);
+	i = 0;
+	do {
+		// ouput the word list as string.
+		word_t *w = ws;
+		char *pl = line;
+		*pl = '\0';
+		while (w != NULL) {
+			pl += sprintf(pl, "%s ", w->word);
+			w = w->next;
+		}
 
+		if (AUTOSELECT) 
+			AUTORES[i].line = strdup(line);
+		else if (VERBOSE)
+			printf("Word list: %s\n", line);
+
+		for (j = min; j <= max; j++) { 
+			produce_combine_word(ws, j, AUTORES[i].res);
+		}
+		i++;
+		if (!PERMUTATION)
+			break;
+	}while(iter_words_perm(ws, nword));
+
+	// output results stored in arrays.
 	if (AUTOSELECT) {
-		int top = 0;
-		for (i = 0; i< AUTOSELECT_MAX_IDX; i++) {
-			char **data = RES[i].ws;
-			int j;
-			printf("words of sum idx: %d\n", i);
-			for (j = 0; j < RES[i].pos; j+=2, data +=2, top++)
-				printf("%s\n%s\n", data[0], data[1]);
+		int i, j,  k, top;
+		for (i = 0; i < fact; i++) {
+			dict_t *res = AUTORES[i].res;
+			printf("\nWords list: %s\n", AUTORES[i].line);
 
-			//We get enough words
-			if (top > topn)
-				break;
+			top = 0;
+			for (j = 0; j < AUTOSELECT_MAX_IDX; j++) {
+				if (res[j].pos == 0)
+					continue;
+
+				char **data = res[j].ws;
+				printf("words of sum idx: %d\n", j);
+				for (k = 0; k < res[j].pos; k+=2, data +=2, top++)
+					printf("%s\n%s\n", data[0], data[1]);
+
+				//We get enough words
+				if (top > topn)
+					break;
+			}
 		}
 	}
 
