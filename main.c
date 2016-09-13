@@ -15,14 +15,14 @@
 
 typedef struct word_t{
 	char *word;
-	int len, step, idx;
+	int step, idx, max_idx, len;
 	// used for words permutation.
 	int nth;
 	struct word_t *next, *prev;
 }word_t;
 
 
-word_t* word_set_init(const char *words) 
+word_t* word_set_init(const char *words, int max_sum_idx) 
 {
 	int nalloc = 20;
 	int npos = 0;
@@ -54,8 +54,10 @@ word_t* word_set_init(const char *words)
 
 	//fill wset with information about words;
 	for (i = 0; i < npos; i++) {
+		int len;
 		wset[i].word = ws[i];
-		wset[i].len = strlen(ws[i]);
+		len = wset[i].len = strlen(ws[i]);
+		wset[i].max_idx = (len < max_sum_idx)?(len-1):max_sum_idx;
 	}
 
 	free(ws);
@@ -154,7 +156,7 @@ bool iter_characters_combination(word_t *ws,  char *pcomb)
 		w->idx ++;
 		*pcomb = '\0';
 
-		if ((w->idx+w->step) > w->len) {
+		if (w->idx > w->max_idx) {
 			w->idx = 0;
 			return true;
 		}
@@ -169,7 +171,7 @@ bool iter_characters_combination(word_t *ws,  char *pcomb)
 		return false;
 
 	w->idx ++;
-	if ((w->idx+w->step) <= w->len)
+	if (w->idx <= w->max_idx)
 		return false;
 
 	// we have arrived at the end of current word, 
@@ -356,7 +358,7 @@ bool VERBOSE = false;
 bool AUTOSELECT = false;
 bool PERMUTATION = false;
 #define MAX_SUM_IDX 10
-int AUTOSELECT_MAX_IDX = MAX_SUM_IDX;
+int AUTOSELECT_MAX_IDX = 2;
 
 typedef struct autores_t {
 	char *line;
@@ -443,6 +445,9 @@ void produce_combine_word(word_t *ws, int combine_len, dict_t res[MAX_SUM_IDX])
 		for (pos = 0; pos < DICT[i][j].pos; pos++) {
 			if (!strncasecmp(comb, DICT[i][j].ws[pos], 64)) {
 				if (AUTOSELECT) {
+					if (idx > AUTOSELECT_MAX_IDX)
+						continue;
+
 					if ((res[idx].alloc == 0) || (res[idx].pos+2 > res[idx].alloc))	{
 						if (res[idx].alloc == 0) {
 							res[idx].alloc = 16;
@@ -454,12 +459,10 @@ void produce_combine_word(word_t *ws, int combine_len, dict_t res[MAX_SUM_IDX])
 						res[idx].ws = buf;
 					}
 
-					if (idx < AUTOSELECT_MAX_IDX) {
-						int pos = res[idx].pos;
-						res[idx].ws[pos] = strdup(comb);
-						res[idx].ws[pos+1] = strdup(idxstep);
-						res[idx].pos += 2;
-					}
+					int pos = res[idx].pos;
+					res[idx].ws[pos] = strdup(comb);
+					res[idx].ws[pos+1] = strdup(idxstep);
+					res[idx].pos += 2;
 				}
 				else if (VERBOSE)
 					printf("%s\n%s\n", comb, idxstep);
@@ -481,9 +484,16 @@ void Usage(const char *prog)
 	printf("Extract characters from word to combine a new word for recite. Usage: \n" 
 			"%s [--min decimal] [--max decimal]\n"
 			"\t [--dict fdict]\n"
-			"\t [--verbose | --autoselect[=topn]]\n"
-			"\t [--permutation decimal]\n"
+			"\t [--autoselect=max_sum_idx]\n"
+			"\t [--permutation]\n"
+			"\t [--verbose]\n"
+			"\t [--help]\n"
 			"\t string_list\n", prog);
+
+	printf(" --min --max: the minimun or maxmum length of generated new words.\n"
+			" --autoselect: let the system select the best candidates for you.\n"
+			" --permutation: let the system permutate the word list, and do the same as autoselect on each permutation.\n"
+			" --verbose: print out more details. This option is automatically enabled when autoselect or permutaion is enabled.\n");
 
 	exit(EXIT_FAILURE);
 }
@@ -493,19 +503,19 @@ int main(int argc, char* argv[])
 	char *words = NULL;
 	char *fdict = NULL;
 	int min = 0, max=0;
-	int topn = INT_MAX;
 
 	static struct option options[] = {
 		{"min", required_argument, NULL, 'i'},
 		{"max", required_argument, NULL, 'a'},
 		{"dict", required_argument, NULL, 'd'},
-		{"autoselect", optional_argument, NULL, 's'},
-		{"permutation", required_argument, NULL, 'p'},
+		{"autoselect", required_argument, NULL, 's'},
+		{"permutation", no_argument, NULL, 'p'},
 		{"verbose", no_argument, NULL, 'v'},
+		{"help", no_argument, NULL, 'h'},
 	};
 
 	int opt, optidx = 0;
-	while ((opt = getopt_long(argc, argv, "vs::p:", options, &optidx)) != -1) {
+	while ((opt = getopt_long(argc, argv, "vs:ph", options, &optidx)) != -1) {
 		switch(opt) {
 			case 'i':
 				min = strtol(optarg, NULL, 10);
@@ -518,17 +528,15 @@ int main(int argc, char* argv[])
 				break;
 			case 's':
 				AUTOSELECT = true;
-				if (optarg != NULL)
-					topn = strtol(optarg, NULL, 10);
+				AUTOSELECT_MAX_IDX = strtol(optarg, NULL, 10);
 				break;
 			case 'p':
 				PERMUTATION = true;
-				if (optarg != NULL)
-					AUTOSELECT_MAX_IDX = strtol(optarg, NULL, 10);
 				break;
 			case 'v':
 				VERBOSE = true;
 				break;
+			case 'h':
 			default:
 				Usage(argv[0]);
 				break;
@@ -538,18 +546,23 @@ int main(int argc, char* argv[])
 	if (optind + 1 != argc)
 		Usage(argv[0]);
 
-	words = strdup(argv[optind]);
-	word_t* ws = word_set_init(words);
-	if (ws == NULL) {
-		perror("Failed to parse word list!\n");
-		Usage(argv[0]);
+	if (PERMUTATION) {
+		AUTOSELECT = true;
+		if (AUTOSELECT_MAX_IDX > 2)
+			AUTOSELECT_MAX_IDX = 2;
 	}
 
-	if (fdict == NULL)
-		fdict = "/usr/share/dict/american-english";
+	if (AUTOSELECT) {
+		VERBOSE = true;
+	}
+	if (AUTOSELECT_MAX_IDX > MAX_SUM_IDX)
+		AUTOSELECT_MAX_IDX = MAX_SUM_IDX-1;
 
-	if (!read_dict(fdict)) {
-		perror("Cannot open dictionary!\n");
+	words = strdup(argv[optind]);
+	word_t* ws = word_set_init(words, AUTOSELECT_MAX_IDX);
+
+	if (ws == NULL) {
+		perror("Failed to parse word list!\n");
 		Usage(argv[0]);
 	}
 
@@ -562,6 +575,7 @@ int main(int argc, char* argv[])
 		nlen += w->len;
 		w = w->next;
 	}
+
 	if (min < nword)
 		min = nword;
 	if (max < min)
@@ -571,16 +585,14 @@ int main(int argc, char* argv[])
 	if (min > max)
 		min = max;
 
-	if (PERMUTATION) {
-		AUTOSELECT = true;
-		if (min > nword)
-			min = nword;
-		if ((max > nword) && (nword < nlen))
-			max = nword+1;
+	if (fdict == NULL)
+		fdict = "/usr/share/dict/american-english";
+
+	if (!read_dict(fdict)) {
+		perror("Cannot open dictionary!\n");
+		Usage(argv[0]);
 	}
 
-	if (AUTOSELECT)
-		VERBOSE = true;
 
 	int fact = 1;
 	int i, j;
@@ -623,24 +635,30 @@ int main(int argc, char* argv[])
 
 	// output results stored in arrays.
 	if (AUTOSELECT) {
-		int i, j,  k, top;
+		int i, j,  k;
+		bool c;
 		for (i = 0; i < fact; i++) {
 			dict_t *res = AUTORES[i].res;
-			printf("\nWords list: %s\n", AUTORES[i].line);
 
-			top = 0;
-			for (j = 0; j < AUTOSELECT_MAX_IDX; j++) {
+			c = true; 
+			for (j = 0; j <= AUTOSELECT_MAX_IDX; j++) {
+				if (res[j].pos != 0) {
+					c = false;
+					break;
+				}
+			}
+			if (c)
+				continue;
+
+			printf("\nWords list: %s\n", AUTORES[i].line);
+			for (j = 0; j <= AUTOSELECT_MAX_IDX; j++) {
 				if (res[j].pos == 0)
 					continue;
 
 				char **data = res[j].ws;
 				printf("words of sum idx: %d\n", j);
-				for (k = 0; k < res[j].pos; k+=2, data +=2, top++)
+				for (k = 0; k < res[j].pos; k+=2, data +=2)
 					printf("%s\n%s\n", data[0], data[1]);
-
-				//We get enough words
-				if (top > topn)
-					break;
 			}
 		}
 	}
