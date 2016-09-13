@@ -57,7 +57,7 @@ word_t* word_set_init(const char *words, int max_sum_idx)
 		int len;
 		wset[i].word = ws[i];
 		len = wset[i].len = strlen(ws[i]);
-		wset[i].max_idx = (len < max_sum_idx)?(len-1):max_sum_idx;
+		wset[i].max_idx = ((len-1) < max_sum_idx)?(len-1):max_sum_idx;
 	}
 
 	free(ws);
@@ -156,7 +156,7 @@ bool iter_characters_combination(word_t *ws,  char *pcomb)
 		w->idx ++;
 		*pcomb = '\0';
 
-		if (w->idx > w->max_idx) {
+		if ((w->idx > w->max_idx) || ((w->idx + w->step) > w->len)) {
 			w->idx = 0;
 			return true;
 		}
@@ -171,7 +171,7 @@ bool iter_characters_combination(word_t *ws,  char *pcomb)
 		return false;
 
 	w->idx ++;
-	if (w->idx <= w->max_idx)
+	if ((w->idx <= w->max_idx) && ((w->idx + w->step) <= w->len)) 
 		return false;
 
 	// we have arrived at the end of current word, 
@@ -482,17 +482,20 @@ void produce_combine_word(word_t *ws, int combine_len, dict_t res[MAX_SUM_IDX])
 void Usage(const char *prog)
 {
 	printf("Extract characters from word to combine a new word for recite. Usage: \n" 
-			"%s [--min decimal] [--max decimal]\n"
+			"%s [--min-length decimal] [--max-length decimal]\n"
+			"\t [--max-sum-idx decimal]\n"
 			"\t [--dict fdict]\n"
-			"\t [--autoselect=max_sum_idx]\n"
+			"\t [--autoselect]\n"
 			"\t [--permutation]\n"
 			"\t [--verbose]\n"
 			"\t [--help]\n"
 			"\t string_list\n", prog);
 
-	printf(" --min --max: the minimun or maxmum length of generated new words.\n"
+	printf(" --min-length --max-length: the minimun or maxmum length of generated new words.\n"
+			" --max-sum-idx: the maximun value of sum of idx (idx means offset to each word).\n"
+			" --dict: specify the path of your dictionary. use /usr/share/dict/american-english in default.\n"
+			" --permutation: let the system permutate the word list and search the combinations on each permutation.\n"
 			" --autoselect: let the system select the best candidates for you.\n"
-			" --permutation: let the system permutate the word list, and do the same as autoselect on each permutation.\n"
 			" --verbose: print out more details. This option is automatically enabled when autoselect or permutaion is enabled.\n");
 
 	exit(EXIT_FAILURE);
@@ -503,19 +506,21 @@ int main(int argc, char* argv[])
 	char *words = NULL;
 	char *fdict = NULL;
 	int min = 0, max=0;
+	AUTOSELECT_MAX_IDX = INT_MAX;
 
 	static struct option options[] = {
-		{"min", required_argument, NULL, 'i'},
-		{"max", required_argument, NULL, 'a'},
+		{"min-length", required_argument, NULL, 'i'},
+		{"max-length", required_argument, NULL, 'a'},
+		{"max-sum-idx", required_argument, NULL, 'x'},
 		{"dict", required_argument, NULL, 'd'},
-		{"autoselect", required_argument, NULL, 's'},
+		{"autoselect", no_argument, NULL, 's'},
 		{"permutation", no_argument, NULL, 'p'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"help", no_argument, NULL, 'h'},
 	};
 
 	int opt, optidx = 0;
-	while ((opt = getopt_long(argc, argv, "vs:ph", options, &optidx)) != -1) {
+	while ((opt = getopt_long(argc, argv, "i:a:x:d:spvh", options, &optidx)) != -1) {
 		switch(opt) {
 			case 'i':
 				min = strtol(optarg, NULL, 10);
@@ -523,12 +528,14 @@ int main(int argc, char* argv[])
 			case 'a':
 				max = strtol(optarg, NULL, 10);
 				break;
+			case 'x':
+				AUTOSELECT_MAX_IDX = strtol(optarg, NULL, 10);
+				break;
 			case 'd':
 				fdict = strdup(optarg);
 				break;
 			case 's':
 				AUTOSELECT = true;
-				AUTOSELECT_MAX_IDX = strtol(optarg, NULL, 10);
 				break;
 			case 'p':
 				PERMUTATION = true;
@@ -546,17 +553,11 @@ int main(int argc, char* argv[])
 	if (optind + 1 != argc)
 		Usage(argv[0]);
 
-	if (PERMUTATION) {
-		AUTOSELECT = true;
-		if (AUTOSELECT_MAX_IDX > 2)
-			AUTOSELECT_MAX_IDX = 2;
-	}
-
 	if (AUTOSELECT) {
 		VERBOSE = true;
+		if (AUTOSELECT_MAX_IDX > MAX_SUM_IDX)
+			AUTOSELECT_MAX_IDX = MAX_SUM_IDX-1;
 	}
-	if (AUTOSELECT_MAX_IDX > MAX_SUM_IDX)
-		AUTOSELECT_MAX_IDX = MAX_SUM_IDX-1;
 
 	words = strdup(argv[optind]);
 	word_t* ws = word_set_init(words, AUTOSELECT_MAX_IDX);
@@ -597,14 +598,14 @@ int main(int argc, char* argv[])
 	int fact = 1;
 	int i, j;
 	//sotre the results with dynamically allocated arrays.
-	if (AUTOSELECT) {
-		if (PERMUTATION) {
-			i = nword;
-			while (i > 1) {
-				fact *= i;
-				i--;
-			}
+	if (PERMUTATION) {
+		i = nword;
+		while (i > 1) {
+			fact *= i;
+			i--;
 		}
+	}
+	if (AUTOSELECT) {
 		AUTORES = (autores_t*)calloc(fact, sizeof(autores_t));
 	}
 
@@ -622,7 +623,7 @@ int main(int argc, char* argv[])
 
 		if (AUTOSELECT) 
 			AUTORES[i].line = strdup(line);
-		else if (VERBOSE)
+		else if (VERBOSE || PERMUTATION)
 			printf("Word list: %s\n", line);
 
 		for (j = min; j <= max; j++) { 
