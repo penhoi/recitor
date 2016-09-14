@@ -35,7 +35,7 @@ zonelist plan:zonelists parse label alloc notice
 pelt vfs: pidhash extable log trap vfs
 prism: preempt rcu idr sched mm
 trice: trace radix irq context early 
-thisn: tick hrtimers timers softirq nohz
+stith nohz: softirq tick timers hrtimers nohz
 timekeeping peptic: timekeeping perf printk time clock
 prof local_irq_enable: profile function local_irq_enable
 kmem collin: kmem console lockdep locking initrd
