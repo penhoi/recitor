@@ -48,3 +48,6 @@ duct acpi: delayacct bugs cgroup taskstats
 serf: sfi efi rest ftrace
 
 3. Compose a story
+Comic local_irq_disable
+bacca aspic zonelist plan; pelt vfs prism; trice, thisn kimekeeping peptic prof local_irq_enable.
+Kmeme collin ple numa; scap vma; tref proc; busked vfs; scrow nsfs duct acpi serf.
