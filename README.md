@@ -48,6 +48,8 @@ duct acpi: delayacct bugs cgroup taskstats
 serf: sfi efi rest ftrace
 
 3. Compose a story
-Comic local_irq_disable
-bacca aspic zonelist plan; pelt vfs prism; trice, thisn kimekeeping peptic prof local_irq_enable.
-Kmeme collin ple numa; scap vma; tref proc; busked vfs; scrow nsfs duct acpi serf.
+Comic 关闭 local_irq. 用 bacca and aspic 实施 zonelist plan:  pelt vfs prism; trice, stith 不再（nohz） kimekeeping. Peptic prof 开启 local_irq.
+Kmem collin 疯了: poke numa scap vma; 吃 tref proc; busked vfs; scrow nsfs; duct acpi. -- serf.
+
+How to use this app:
+./recitor  -x0 -ps -d"/usr/share/dict/words"  "tick hrtimers timers softirq" -a6

@@ -121,8 +121,8 @@ bool read_dict(char *fdict)
 		dict_t *d = &DICT[i][j];
 		if ((d->alloc == 0) || (d->pos+1 > d->alloc)) {
 			if (d->alloc == 0) {
-				d->alloc == 16;
-				d->ws == NULL;
+				d->alloc = 16;
+				d->ws = NULL;
 			}
 			char **buf = d->ws;
 			d->alloc *= 2;
